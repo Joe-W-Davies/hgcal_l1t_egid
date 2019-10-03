@@ -14,11 +14,16 @@ def get_options():
 
 (opt,args) = get_options()
 
+
+
 #Total number of files for each sample: use if want all files to be processes
 totalFilesDict = {
   "electron_0PU":22,
   "electron_200PU":400,
-  "neutrino_200PU":2599
+  "neutrino_200PU":2599,
+  "electron_200PU_v10":150,
+  "neutrino_200PU_v10":1667
+  
 }
 
 #Define path and 

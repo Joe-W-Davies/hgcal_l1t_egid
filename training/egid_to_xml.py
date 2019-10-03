@@ -33,7 +33,7 @@ def egid_to_xml():
 
   #Define BDT name
   bdt_name = "%s_vs_%s_%s"%(opt.signalType,opt.backgroundType,opt.bdtConfig)
-  # Check if model exists
+  # Check if model, created during training, exists
   if not os.path.exists("./models/egid_%s_%s_loweta.model"%(bdt_name,opt.clusteringAlgo)):
     print " --> [ERROR] No model exists for this BDT: ./models/egid_%s_%s_loweta.model. Train first! Leaving..."%(bdt_name,opt.clusteringAlgo)
     print "~~~~~~~~~~~~~~~~~~~~~ egid TRAINING (END) ~~~~~~~~~~~~~~~~~~~~~"
@@ -69,6 +69,7 @@ def egid_to_xml():
     target_names = ['background','signal']
     # FIXME: add options for saving BDT with user specified hyperparams
     bdt = BDTxgboost( egid, egid_vars[bdt_name], target_names, kind='binary', max_depth=6, learning_rate=0.3 )
+    # save to file path
     bdt.to_tmva( f_xml )
 
     print " --> Converted to xml: ./xml/egid_%s_%s_%seta.xml"%(bdt_name,opt.clusteringAlgo,reg)

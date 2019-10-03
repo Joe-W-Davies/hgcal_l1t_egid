@@ -24,7 +24,7 @@ from root_numpy import tree2array, fill_hist
 # Extract input variables to BDT from egid_training.py: if BDT config not defined there then will fail
 from egid_training import egid_vars, eta_regions
 
-# Define sample to tree mapping
+# Define sample : tree mapping
 treeMap = {
   "electron":"e_sig",
   "photon":"g_sig",
@@ -47,7 +47,7 @@ def get_options():
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # FUNCTIONS TO INITIATE AND EVALUATE BDTs
 
-# Initialisation: returns BDT and dict of input variables. Takes xml file name as input
+# TMVA Initialisation: returns BDT and dict of input variables. Takes xml file name as input
 def initialise_egid_BDT( in_xml, in_var_names ):
   # book mva reader with input variables
   in_var = {}
@@ -60,11 +60,11 @@ def initialise_egid_BDT( in_xml, in_var_names ):
   # return initialised BDT and input variables
   return bdt_, in_var
 
-# Evaluation: calculates BDT score for 3D cluster taking bdt as input
+# Evaluation: calculates BDT score for single 3D cluster taking bdt as input
 def evaluate_egid_BDT( _bdt, _bdt_var, in_cl3d, in_var_names ):
   # Loop over input vars and extract values from tree
   for var in in_var_names: _bdt_var[var][0]=getattr( in_cl3d, "%s"%var ) 
-  #return BDT score
+  #return BDT score for single event
   return _bdt.EvaluateMVA("BDT")
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -72,7 +72,7 @@ def evaluate_egid():
 
   print "~~~~~~~~~~~~~~~~~~~~~~~~ egid EVALUATE ~~~~~~~~~~~~~~~~~~~~~~~~"
 
-  # Extract bdt names from input list
+  # Extract bdt names from input list. Example format: [elec_vs_neut_baseline]
   bdt_list = []
   for bdt in opt.bdts.split(","): bdt_list.append( "%s_%s"%(bdt.split(":")[0],bdt.split(":")[1]) )
 
@@ -96,12 +96,12 @@ def evaluate_egid():
         print "~~~~~~~~~~~~~~~~~~~~~ egid EVALUATE (END) ~~~~~~~~~~~~~~~~~~~~~"
         sys.exit(1)
       else:
-        # passed checks: add xml to dict
+        # passed checks: add xml name and filepath to dict
         model_xmls[ "%s_%seta"%(bdt_name,reg) ] = "./xml/egid_%s_%s_%seta.xml"%(bdt_name,opt.clusteringAlgo,reg)
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # CONFIGURE INPUT NTUPLE
-  # Define input ntuple
+  # Define input ntuple e.g. train/test
   f_in_name = "%s/cl3d_selection/%s/%s_%s_%s.root"%(os.environ['HGCAL_L1T_BASE'],opt.sampleType,opt.sampleType,opt.clusteringAlgo,opt.dataset)
   if not os.path.exists( f_in_name ):
     print " --> [ERROR] Input ntuple %s does not exist. Leaving..."%f_in_name
@@ -116,6 +116,7 @@ def evaluate_egid():
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # CONFIGURE OUTPUT NTUPLE
+  # will be identical as input, but with BDT distribution added
   if not os.path.isdir("./results"):
     print " --> Making ./results directory"
     os.system("mkdir results")
@@ -126,15 +127,16 @@ def evaluate_egid():
 
   # Variables to store in output ntuple
   out_var_names = ['pt','eta','phi','clusters_n','showerlength','coreshowerlength','firstlayer','maxlayer','seetot','seemax','spptot','sppmax','szz','srrtot','srrmax','srrmean','emaxe']
+
   # Add bdt score from TPG: i.e. one that was calculated in ntuple production
   out_var_names.append( "bdt_tpg" )
   # Add new bdt scores
   for bdt_name in bdt_list: out_var_names.append( "bdt_%s"%bdt_name )
-
+   
   # Define dict to store output var
   out_var = {}
   for var in out_var_names: out_var[var] = array('f',[0.])
-  
+
   #Open file: check if already exists (if so ask user if they want to rewrite)
   if os.path.exists( f_out_name ):
     recreate = input("Output file %s already exists. Do you want to write over file [yes=1,no=0]:"%f_out_name)
@@ -145,8 +147,9 @@ def evaluate_egid():
   
   f_out = ROOT.TFile.Open( f_out_name, "RECREATE" )
   t_out = ROOT.TTree( treeMap[opt.sampleType.split("_")[0]], treeMap[opt.sampleType.split("_")[0]] )
-    
-  #Add branches to tree
+
+  #Add branches to tree. Specify as (name, pointer to object associated with name, dtype)
+  # we now associate var with the array, produced from iteritems()
   for var_name, var in out_var.iteritems(): t_out.Branch("cl3d_%s"%var_name, var, "cl3d_%s/F"%var_name) 
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -157,6 +160,7 @@ def evaluate_egid():
   for b in bdt_list:
     # Loop over eta regions
     for reg in ['low','high']:
+      # return first dict key as BDT (init in function), return second as variable list (init in function)
       bdts["%s_%seta"%(b,reg)], bdt_input_variables["%s_%seta"%(b,reg)] = initialise_egid_BDT( model_xmls["%s_%seta"%(b,reg)], egid_vars[b] )
       print " --> Initialised BDT (%s) in %s eta region"%(b,reg)
 
@@ -165,31 +169,31 @@ def evaluate_egid():
   #Loop over clusters in input tree
   for cl3d in t_in:
   
-    #evaluate bdts
+    #Evaluate bdts. Fill scores as entry to bdt identifier keys
     for b in bdt_list:
  
-      #Low eta region: use low eta bdt
+      #Low eta region: use low eta bdt. evaluate score into value/array element corresponding to key=bdt_name
       if(abs(cl3d.cl3d_eta) > eta_regions['low'][0])&(abs(cl3d.cl3d_eta) <= eta_regions['low'][1]):
         out_var["bdt_%s"%b][0] = evaluate_egid_BDT( bdts["%s_loweta"%b], bdt_input_variables["%s_loweta"%b], cl3d, egid_vars[b] )
 
       #High eta region: use high eta bdt
       elif(abs(cl3d.cl3d_eta) > eta_regions['high'][0])&(abs(cl3d.cl3d_eta) <= eta_regions['high'][1]):
         out_var["bdt_%s"%b][0] = evaluate_egid_BDT( bdts["%s_higheta"%b], bdt_input_variables["%s_higheta"%b], cl3d, egid_vars[b] )
-
-      # Else: outside allowed eta range, give value of -999
+      # Else: outside allowed eta range for both BDTs, give value of -999
       else: out_var["bdt_%s"%b][0] = -999.
 
-    # Add all other variables to output ntuple
+    # Add all other variables (i.e. all except scores, which we just did) to output ntuple. 
     for var in out_var_names[:-1*len(bdt_list)]:
+      # extract default tpg file from cl3d selection input ntuple
       if "bdt_tpg" in var: out_var[var][0] = getattr(cl3d,"cl3d_bdteg")
       else: out_var[var][0] = getattr(cl3d,"cl3d_%s"%var)
 
     # Write cluster with new BDT scores to tree
     t_out.Fill()
+  
 
   #END of loop over clusters
   print " --> Evaluated BDT scores and saved in output: %s"%f_out_name
-
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # CLOSE FILES
   f_in.Close()

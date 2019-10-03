@@ -22,7 +22,7 @@ def get_options():
 
 (opt,args) = get_options()
 
-# Mapping to extract TDirectory for different clustering algo
+# Mapping to extract TDirectory for different clustering algo, for each ntuple
 # Add full chain name if using a different alg
 clusteringAlgoDirDict = {"gen":"Floatingpoint8ThresholdDummyHistomaxvardrGenclustersntuple","Histomaxvardr":"Floatingpoint8ThresholdDummyHistomaxvardrGenclustersntuple","Histomaxvardr_stc":"Floatingpoint8SupertriggercellDummyHistomaxvardrClustersntuple"}
 
@@ -35,12 +35,11 @@ pdgIdDict = {
 }
 pdgid = pdgIdDict[ opt.sampleType.split("_")[0] ]
 
-#Check: clustering exists in dir
+#Check: clustering algorithm exists in dir
 clusteringAlgo = opt.clusteringAlgo
 if clusteringAlgo not in clusteringAlgoDirDict:
   print " --> [ERROR] not configured for %s clustering. Leaving..."%clusteringAlgo  
   print "~~~~~~~~~~~~~~~~~~~~ Cl3D Selection (END) ~~~~~~~~~~~~~~~~~~~~"
-  sys.exit(1)
 
 # Check: if ntuple exists
 if os.path.exists("%s/%s/ntuple_%g.root"%(opt.inputPath,opt.sampleType,opt.fileNumber)):
@@ -55,7 +54,10 @@ else:
 
 # Open trees to read from
 f_in = ROOT.TFile.Open( f_in_name )
+# go through dirs in the specific ntuple to get the info from the clustering chosen when producing them
+# gen:
 gen_tree = f_in.Get("%s/HGCalTriggerNtuple"%clusteringAlgoDirDict["gen"])
+# reco:
 cl3d_tree = f_in.Get("%s/HGCalTriggerNtuple"%clusteringAlgoDirDict[clusteringAlgo])
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -137,8 +139,9 @@ sampleToTreeDict = {
 out_tree = ROOT.TTree( sampleToTreeDict[opt.sampleType.split("_")[0]], sampleToTreeDict[opt.sampleType.split("_")[0]] )
 out_var_names = ['pt','eta','phi','clusters_n','showerlength','coreshowerlength','firstlayer','maxlayer','seetot','seemax','spptot','sppmax','szz','srrtot','srrmax','srrmean','emaxe','bdteg','quality']
 out_var = {}
+#fill dict for use in tree: {'var_name' : array(var))
 for var in out_var_names: out_var[var] = array('f',[0.])
-#Create branches in output tree
+#Create branches in output tree uses dict. has form: Branch("name_of_var",adress of variable being filled,type)
 for var_name, var in out_var.iteritems(): out_tree.Branch( "cl3d_%s"%var_name, var, "cl3d_%s/F"%var_name )
 
 print " --> Output configured"
@@ -153,34 +156,38 @@ for ev_idx in range(cl3d_tree.GetEntries()):
   else:
     if ev_idx % 100 == 0: print "    --> Processing event: %g/%g"%(ev_idx+1,opt.maxEvents)
 
-  #Extract event info from both gen and cluster tree
+  #Extract single event info from both gen and cluster tree
   gen_tree.GetEntry( ev_idx )
   cl3d_tree.GetEntry( ev_idx )
 
-  #Extract number of gen particles + cl3d in event
+  #Extract number of gen particles + no of cl3d in single event
   N_gen = gen_tree.gen_n
   N_cl3d = cl3d_tree.cl3d_n
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # GEN-MATCHED CLUSTERS
+  #check sample was electron photon or pion i.e. not neutrinos
   if opt.sampleType.split("_")[0] in ['electron','photon','pion']:
 
-    #Loop over gen-e/gamma in event
+    #Loop over 2 x gen-e/gamma in event
     for gen_idx in range( N_gen ):
+      # test pdg_id in event is indeed either electron/photon/pion/ (depends on sample)
       if abs( gen_tree.gen_pdgid[gen_idx] ) in pdgid:
-        #define TLorentzVector for gen particle
+        #define and fill TLorentzVector for gen particle
         gen_p4 = ROOT.TLorentzVector()
         gen_p4.SetPtEtaPhiE( gen_tree.gen_pt[gen_idx], gen_tree.gen_eta[gen_idx], gen_tree.gen_phi[gen_idx], gen_tree.gen_energy[gen_idx] )
         # require gen e/g/pi pT > 20 GeV
         if gen_p4.Pt() < 20.: continue
 
-        # loop overi 3d clusters: save index of max pt cluster if in 
+        # loop over 3d clusters: save index of max pt cluster if in 
+        # for each electron, loop over all clusters - note that electrons in two different ends of detector, so
+        # loop over clusters will not select same cluster twice due to dR requirement
         cl3d_genMatched_maxpt_idx = -1
         cl3d_genMatched_maxpt = -999
         for cl3d_idx in range( N_cl3d ):
-          #requre that cluster pt > 10 GeV
+          #requre that cluster pt > 10 GeV. Want perfomance for 20/30 GeV, but can clusters get reco-ed lower 
           if cl3d_tree.cl3d_pt[cl3d_idx] < 10.: continue
-          #define TLorentxVector for cl3d
+          #define and fill TLorentxVector for cl3d for use of DeltaR function
           cl3d_p4 = ROOT.TLorentzVector()
           cl3d_p4.SetPtEtaPhiE( cl3d_tree.cl3d_pt[cl3d_idx], cl3d_tree.cl3d_eta[cl3d_idx], cl3d_tree.cl3d_phi[cl3d_idx], cl3d_tree.cl3d_energy[cl3d_idx] )
           #Require cluster to be dR < 0.2 within gen particle
@@ -190,10 +197,13 @@ for ev_idx in range(cl3d_tree.GetEntries()):
                cl3d_genMatched_maxpt = cl3d_p4.Pt()
                cl3d_genMatched_maxpt_idx = cl3d_idx
 
-        # if cl3d idx has been set then add fill cluster to tree
+        # if cl3d idx has been set then add fill cluster to tree using function defined above
         if cl3d_genMatched_maxpt_idx >= 0:
+          # make object from cluster class
           cl3d = Cluster3D( cl3d_tree, cl3d_genMatched_maxpt_idx )
+          # fill tree
           fill_cl3d( cl3d, out_var )
+	  
 
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   #BACKGROUND CLUSTERS: PU

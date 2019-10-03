@@ -8,7 +8,7 @@ cd $HGCAL_L1T_BASE
 cd cl3d_selection
 eval `scramv1 runtime -sh`
 
-#Input to cl3d selection
+#Input to cl3d selection. Fourth is ntuple file number to run over
 sample_type=$2
 input_path=$3
 file_number=$4

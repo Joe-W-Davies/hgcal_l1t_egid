@@ -33,7 +33,11 @@ def get_options():
   return parser.parse_args()
 
 # HARDCODED: input variables to BDT for different configs. Specify config in options. To try new BDT with different inputs variables, then add another key to dict
-egid_vars = {"electron_200PU_vs_neutrino_200PU_baseline":['cl3d_coreshowerlength','cl3d_firstlayer','cl3d_maxlayer','cl3d_srrmean'],'electron_200PU_vs_neutrino_200PU_full':['cl3d_coreshowerlength','cl3d_showerlength','cl3d_firstlayer','cl3d_maxlayer','cl3d_szz','cl3d_srrmean','cl3d_srrtot','cl3d_seetot','cl3d_spptot']}
+egid_vars = {"electron_200PU_vs_neutrino_200PU_baseline":['cl3d_coreshowerlength','cl3d_firstlayer','cl3d_maxlayer','cl3d_srrmean'],
+'electron_200PU_vs_neutrino_200PU_full':['cl3d_coreshowerlength','cl3d_showerlength','cl3d_firstlayer','cl3d_maxlayer','cl3d_szz','cl3d_srrmean','cl3d_srrtot','cl3d_seetot','cl3d_spptot'], 
+"electron_200PU_v10_vs_neutrino_200PU_v10_baseline":['cl3d_coreshowerlength','cl3d_firstlayer','cl3d_maxlayer','cl3d_srrmean'],
+'electron_200PU_v10_vs_neutrino_200PU_v10_full':['cl3d_coreshowerlength','cl3d_showerlength','cl3d_firstlayer','cl3d_maxlayer','cl3d_szz','cl3d_srrmean','cl3d_srrtot','cl3d_seetot','cl3d_spptot']
+}
 
 # Define eta regions for different trainings
 eta_regions = {"low":[1.5,2.7],"high":[2.7,3.0]}
@@ -52,7 +56,7 @@ def train_egid():
   trainFrac = 0.9
   validFrac = 0.1
 
-  #Define BDT name
+  #Define BDT name 
   bdt_name = "%s_vs_%s_%s"%(opt.signalType,opt.backgroundType,opt.bdtConfig)
   # Check if input vars for BDT name are defined
   if bdt_name in egid_vars: print " --> Training BDT: %s"%bdt_name
@@ -65,13 +69,13 @@ def train_egid():
   treeMap = {"electron":"e_sig","photon":"g_sig","pion":"pi_bkg","neutrino":"pu_bkg"}
   procMap = {"electron":"signal", "photon":"signal", "pion":"background", "neutrino":"background"}
 
-  # Add input files to map
+  # Add input files to map. Format is: e.g. { 'electron' : file_path_to_train_root_file }
   procFileMap = {}
   procFileMap[ opt.signalType.split("_")[0] ] = "%s/cl3d_selection/%s/%s_%s_train.root"%(os.environ['HGCAL_L1T_BASE'],opt.signalType,opt.signalType,opt.clusteringAlgo)
   procFileMap[ opt.backgroundType.split("_")[0] ] = "%s/cl3d_selection/%s/%s_%s_train.root"%(os.environ['HGCAL_L1T_BASE'],opt.backgroundType,opt.backgroundType,opt.clusteringAlgo)
   procs = procFileMap.keys()
 
-  # Check if models and frames directories exist
+  # Check if models directory and frames directory exist
   if not os.path.isdir("./models"):
     print " --> Making ./models directory to store trained egid models"
     os.system("mkdir models")
@@ -83,16 +87,19 @@ def train_egid():
   # EXTRACT DATAFRAMES FROM INPUT SELECTED CLUSTERS
   trainTotal = None
   trainFrames = {}
-  #extract the trees: turn them into arrays
+  #extract the trees from file path: turn them into arrays. Do this for signal then background
   for proc,fileName in procFileMap.iteritems():
+    # get signal train root file from the file path in dict
     trainFile = ROOT.TFile("%s"%fileName)
+    # get the e_sig branch with the var names from the Tfile created above
     trainTree = trainFile.Get( treeMap[proc] )
     #initialise new tree with only relevant variables
     _file = ROOT.TFile("tmp.root","RECREATE")
     _tree = ROOT.TTree("tmp","tmp")
     _vars = {}
+    # read variables from dict. Set branch names with relevant vars, in temporary tree
     for var in egid_vars[bdt_name]:
-      _vars[ var ] = array( 'f', [-1.] )
+      _vars[ var ] = array( 'f', [-1.] ) # format: {var1:(-1), var2:(-1)}
       _tree.Branch( '%s'%var, _vars[ var ], '%s/F'%var )
     #Also add cluster eta to do eta splitting
     _vars['cl3d_eta'] = array( 'f', [-999.] )
@@ -100,17 +107,19 @@ def train_egid():
 
     #loop over events in tree and add to tmp tree
     for ev in trainTree:
+	    # now set the null entries to value from event. format: ('var1': value_for_ev1, 'var2': v_f_ev_1,..
       for var in egid_vars[bdt_name]: _vars[ var ][0] = getattr( ev, '%s'%var )
       _vars['cl3d_eta'][0] = getattr( ev, 'cl3d_eta' )
       _tree.Fill()
   
-    #Convert tmp tree to pandas dataFrame and delete tmp files
+    # Convert tmp tree to pandas dataFrame and delete tmp files. Store each dataframe in a dict with the
+    # proc= signal/background as the key
     trainFrames[proc] = pd.DataFrame( tree2array( _tree ) )
     del _file
     del _tree
     os.system('rm tmp.root')
 
-    #Add columns to dataframe to labl clusters
+    #Add columns to each dataframe in the dict to label process i.e. proc = signal on first loop
     trainFrames[proc]['proc'] = procMap[ proc ]
     print " --> Extracted %s dataFrame from file: %s"%(proc,fileName)
 
@@ -142,6 +151,7 @@ def train_egid():
       print " --> Reweighting: equalise signal and background samples (same sum of weights)"
       sum_sig = len( train_reg[ train_reg['proc'] == "signal" ].index )
       sum_bkg = len( train_reg[ train_reg['proc'] == "background" ].index )
+      # map proc label into lambda function for weight equalisation. does this elementwise behind the scenes 
       weights = list( map( lambda a: (sum_sig+sum_bkg)/sum_sig if a == "signal" else (sum_sig+sum_bkg)/sum_bkg, train_reg['proc'] ) )
       train_reg['weight'] = weights 
     else:
@@ -156,11 +166,11 @@ def train_egid():
     egid_trainLimit = int(theShape*trainFrac)
     egid_validLimit = int(theShape*validFrac)
   
-    #Set up dataFrames for training BDT
+    #Set up dataFrames for training BDT. Get numpy array of all relevant vars from dataframe
     egid_X = train_reg[ egid_vars[bdt_name] ].values
     egid_y = label_encoder.fit_transform( train_reg['proc'].values )
     if opt.reweighting: egid_w = train_reg['weight'].values
-
+   
     #Peform shuffle
     egid_X = egid_X[theShuffle]
     egid_y = egid_y[theShuffle]
@@ -191,7 +201,7 @@ def train_egid():
         param = paramPair.split(":")[0]
         value = paramPair.split(":")[1]
         trainParams[param] = value
-        paramExt += '%s)%s__'%(param_value)
+        paramExt += '%s_%s__'%(param_value)
       paramExt = paramExt[:-2]
 
     # Train the model

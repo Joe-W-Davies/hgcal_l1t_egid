@@ -18,21 +18,30 @@ def get_options():
 sampleDict = {
   "electron_0PU":"/SingleE_FlatPt-2to100/PhaseIIMTDTDRAutumn18DR-NoPU_103X_upgrade2023_realistic_v2-v1/FEVT",
   "electron_200PU":"/SingleE_FlatPt-2to100/PhaseIIMTDTDRAutumn18DR-PU200_103X_upgrade2023_realistic_v2-v1/FEVT",
-  "neutrino_200PU":"/NeutrinoGun_E_10GeV/PhaseIIMTDTDRAutumn18DR-PU200_103X_upgrade2023_realistic_v2-v1/FEVT"
+  "neutrino_200PU":"/NeutrinoGun_E_10GeV/PhaseIIMTDTDRAutumn18DR-PU200_103X_upgrade2023_realistic_v2-v1/FEVT",
+  "photon_200PU":"/SinglePhoton_FlatPt-8to150/PhaseIIMTDTDRAutumn18DR-PU200_103X_upgrade2023_realistic_v2-v1/FEVT",
+  "electron_200PU_v10":"/SingleElectron_PT2to100/PhaseIITDRSpring19DR-PU200_106X_upgrade2023_realistic_v3-v1/GEN-SIM-DIGI-RAW",
+  "neutrino_200PU_v10":"/Nu_E10-pythia8-gun/PhaseIITDRSpring19DR-PU200_106X_upgrade2023_realistic_v3-v3/GEN-SIM-DIGI-RAW"  
 }
 
 #Total number of files for each sample: use if want all files to be processes
 totalFilesDict = {
   "electron_0PU":22,
   "electron_200PU":400,
-  "neutrino_200PU":2599
+  "neutrino_200PU":2599,
+  "photon_200PU":400,
+  "electron_200PU_v10":150,
+  "neutrino_200PU_v10":1667
 }
 
 #Output dataset tag
 datasetTagDict = {
   "electron_0PU":"SingleElectron_FlatPt-2to100_0PU_hgcal_l1t_v9",
   "electron_200PU":"SingleElectron_FlatPt-2to100_0PU_hgcal_l1t_v9",
-  "neutrino_200PU":"SingleNeutrino_200PU_hgcal_l1t_v9"
+  "neutrino_200PU":"SingleNeutrino_200PU_hgcal_l1t_v9",
+  "photon_200PU":"SinglePhoton_200PU_hgcal_l1t_v9",
+  "electron_200PU_v10":"SinglePhoton_200PU_hgcal_l1t_v10",
+  "neutrino_200PU_v10":"SingleNeutrino_200PU_hgcal_l1t_v10"
 }
 
 # Catch: check using available sample type
@@ -62,7 +71,7 @@ if opt.mode == "sub":
   f_sub = open("%s"%f_sub_name, "w+")
   f_sub.write("from CRABClient.UserUtilities import config\n")
   f_sub.write("config = config()\n\n")
-  f_sub.write("config.Debug.scheddName = \'crab3@vocms0198.cern.ch\'\n\n")
+  #f_sub.write("config.Debug.scheddName = \'crab3@vocms0198.cern.ch\'\n\n")
   f_sub.write("config.General.requestName = \'%s\'\n"%opt.sampleType)
   f_sub.write("config.General.workArea = \'crab_area\'\n")
   f_sub.write("config.General.transferOutputs = True\n")

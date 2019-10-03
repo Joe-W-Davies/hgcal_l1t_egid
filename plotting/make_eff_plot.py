@@ -42,7 +42,7 @@ pdgid = pdgIdDict[ opt.signalType.split("_")[0] ]
 #Check: clustering exists in dir
 clusteringAlgo = opt.clusteringAlgo
 if clusteringAlgo not in clusteringAlgoDirDict:
-  print " --> [ERROR] not configured for %s clustering. Leaving..."%clusteringAlgo
+  print " --v> [ERROR] not configured for %s clustering. Leaving..."%clusteringAlgo
   leave()
 
 # Check ntuples exist. If so then make combined ntuple using hadd
@@ -60,7 +60,7 @@ genTree = f_in.Get("%s/HGCalTriggerNtuple"%clusteringAlgoDirDict["gen"])
 cl3dTree = f_in.Get("%s/HGCalTriggerNtuple"%clusteringAlgoDirDict[ opt.clusteringAlgo ])
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Define histograms for total, gen matched, passin quality flag for pt and eta
+# Define histograms for total, gen matched, passing quality flag for pt and eta
 hist_tot_genpt = ROOT.TH1F("h_tot_genpt","",20,0,100)
 hist_tot_geneta = ROOT.TH1F("h_tot_geneta","",64,-3.2,3.2)
 hist_matched_genpt = ROOT.TH1F("h_matched_genpt","",20,0,100)
@@ -103,7 +103,7 @@ for ev_idx in range( genTree.GetEntries() ):
           cl3d_genmatched_maxpt = -999.
           for cl3d_idx in range(N_cl3d):
             # Apply selection
-            if cl3dTree.cl3d_pt < 20.: continue
+            if cl3dTree.cl3d_pt[cl3d_idx] < 20.: continue
             # Define 4 cevtor for cl3d
             cl3d_p4 = ROOT.TLorentzVector()
             cl3d_p4.SetPtEtaPhiE( cl3dTree.cl3d_pt[cl3d_idx], cl3dTree.cl3d_eta[cl3d_idx], cl3dTree.cl3d_phi[cl3d_idx], cl3dTree.cl3d_energy[cl3d_idx] )
@@ -120,7 +120,7 @@ for ev_idx in range( genTree.GetEntries() ):
           hist_matched_genpt.Fill( genTree.gen_pt[gen_idx] )
           hist_matched_geneta.Fill( genTree.gen_eta[gen_idx] )
 
-          # egid: use quality flag
+          # egid: use quality flag (i.e. default BDT score here)
           if cl3dTree.cl3d_quality[cl3d_genmatched_maxpt_idx] > 0:
             hist_egid_genpt.Fill( genTree.gen_pt[gen_idx] )
             hist_egid_geneta.Fill( genTree.gen_eta[gen_idx] )

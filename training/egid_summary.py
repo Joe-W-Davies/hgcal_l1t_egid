@@ -86,7 +86,7 @@ def summary_egid():
     print " --> [ERROR] No input BDT. Leaving..."
     leave()
 
-  # Define variables to store in dataFrame
+  # Define variables to store in dataFrame. These are the eta values, and scores for the bdts under evaluation
   stored_vars = ["cl3d_eta"]
   for b in bdt_list: 
     if "tpg" in b: stored_vars.append( "cl3d_bdt_tpg" )
@@ -109,11 +109,11 @@ def summary_egid():
     for var in stored_vars:
       _vars[var] = array('f',[-1.])
       _tree.Branch( '%s'%var, _vars[var], '%s/F'%var )
-    # Loop over clusters in inpu tree and fill new tree
+    # Loop over clusters in input tree and fill new tree
     for cl3d in iTree:
       for var in stored_vars: _vars[ var ][0] = getattr( cl3d, '%s'%var )
       _tree.Fill()
-    # Convert tree to dataFrame
+    # Convert tree to dataFrame. dictionary ends up containing { signal:_sig_df, bkg:bkg_df}
     frames[proc] = pd.DataFrame( tree2array(_tree) )
     del _file
     del _tree
@@ -121,7 +121,7 @@ def summary_egid():
 
     # Add columns to dataFrame to label clusters
     frames[proc]['proc'] = proc
-    frames[proc]['type'] = info[proc]
+    frames[proc]['type'] = info[proc] #e.g. electron_200PU. dont end up using this
 
   print " --> Extracted dataframes signal and background input ntuples"
   # Make one combined dataFrame
@@ -129,7 +129,7 @@ def summary_egid():
   for proc in ['signal','background']: frames_list.append( frames[proc] )
   frameTotal = pd.concat( frames_list, sort=False )
 
-  # Split into eta regions
+  # Split into eta regions. Store both in dict
   frames_splitByEta = {}
   for reg in eta_regions: 
     frames_splitByEta[reg] = frameTotal[ abs(frameTotal['cl3d_eta']) > eta_regions[reg][0] ]
@@ -165,7 +165,9 @@ def summary_egid():
       # Initiate lists to store efficiencies
       eff_signal[key] = [1.]
       eff_background[key] = [1.]
+      # bdt score
       bdt_points[key] = [-9999.]
+      # indeces of the eff_s values that are (cloest to) the WPs. size:4
       wp_idx[key] = []
 
       # Total number of signal and bkg events in eta region
@@ -174,11 +176,12 @@ def summary_egid():
       # Iterate over rows in frame and calc eff for given bdt_points
       N_sig_running, N_bkg_running = 0., 0.
       for index, row in fr.iterrows():
-        # Add one to running counters depending on proc
+        # Add one to running counters depending on proc. Update efficincies accordingly
         if row['proc'] == 'signal': N_sig_running += 1.
         elif row['proc'] == 'background': N_bkg_running += 1.
+        # want eff_b to be low as possible (hence plot 1-eff_b). N_running = number you lose with cut
         eff_s, eff_b = 1.-(N_sig_running/N_sig_total), 1.-(N_bkg_running/N_bkg_total)
-        # Only add one entry for each bdt output value: i.e. if same as previous then remove last entry
+        # Only add one entry for each bdt output value: i.e. if score same as previous then remove last entry
         if row[bdt_var] == bdt_points[key][-1]:
           bdt_points[key] = bdt_points[key][:-1]
           eff_signal[key] = eff_signal[key][:-1] 
@@ -193,7 +196,8 @@ def summary_egid():
       eff_signal[key] = np.asarray(eff_signal[key])
       eff_background[key] = np.asarray(eff_background[key])
 
-      # Extract indices of working points
+      # Extract indices of working points i.e. find index of eff_s that is closest to each wp
+      # can then get the corresponding BDT score, eff_b since each array above has the same/matching size
       for wp in working_points: wp_idx[key].append( abs((eff_signal[key]-wp)).argmin() )
       print " --> Extracted working points for BDT: %s, eta_region = %s"%(b,reg)
 
@@ -215,17 +219,17 @@ def summary_egid():
       print ""
       print "   --> Eta region: %s --> %.2f < |eta| < %.2f"%(reg,eta_regions[reg][0],eta_regions[reg][1])
       print "      --> Working points:"
-      for wp_itr in range(len(working_points)):
+      for wp_itr in range(len(working_points)): #from 1-4 (over the working points)
         wp = working_points[wp_itr]
         print "                  * At epsilon_s = %4.3f ::: BDT cut = %8.7f, epsilon_b = %5.4f"%(wp,bdt_points[key][wp_idx[key][wp_itr]],eff_background[key][wp_idx[key][wp_itr]])
     
     print "   ~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~.,~>,~.,~.,~.,~"
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # SAVE WORKING POINTS TO TXT FILE
-  # only save if signal and background match what was used to train BDT
   if not os.path.isdir("./wp"): os.system("mkdir wp")
   for b in bdt_list:
 
+  # only save if signal and background match what was used to train BDT
     if( info['signal'] in b )&( info['background'] in b ):
       print " --> Saving working points to .txt files: %s"%b
       f_out = open("./wp/%s_wp.txt"%b,"w")
@@ -242,8 +246,11 @@ def summary_egid():
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # PLOT ROC CURVES
   if opt.outputROC:
+    
+    plotDir = (((opt.bdts.split(",")[0]).split(":")[0]))
+    if not os.path.isdir("%s/plotting/plots/%s"%(os.environ['HGCAL_L1T_BASE'],plotDir)): os.system("mkdir %s/plotting/plots/%s"%(os.environ['HGCAL_L1T_BASE'],plotDir))
 
-    if not os.path.isdir("%s/plotting/plots"%os.environ['HGCAL_L1T_BASE']): os.system("mkdir %s/plotting/plots"%os.environ['HGCAL_L1T_BASE'])
+    legend_v10 = {'electron_200PU_v10_vs_neutrino_200PU_v10_tpg':'v10 tpg','electron_200PU_v10_vs_neutrino_200PU_v10_baseline':'v10 baseline', 'electron_200PU_v10_vs_neutrino_200PU_v10_full':'v10 full'}
 
     print " --> Plotting ROC curves"
     # Plot high and low eta regions separately
@@ -253,6 +260,7 @@ def summary_egid():
       for b in bdt_list:
         key = "%s_%s"%(b,reg)
         _label = b
+        if 'v10' in b: _label = legend_v10[b]
         plt.plot( eff_signal[key], 1-eff_background[key], label=_label, color=bdt_colours[b] )
       plt.xlabel('Signal Eff. ($\epsilon_s$)')
       plt.ylabel('1 - Background Eff. ($1-\epsilon_b$)')
@@ -261,8 +269,8 @@ def summary_egid():
       axes.set_xlim([0.5,1.1])
       axes.set_ylim([0.5,1.1])
       plt.legend(bbox_to_anchor=(0.05,0.1), loc='lower left')
-      plt.savefig( "%s/plotting/plots/ROC_%seta.png"%(os.environ['HGCAL_L1T_BASE'],reg) )
-      plt.savefig( "%s/plotting/plots/ROC_%seta.pdf"%(os.environ['HGCAL_L1T_BASE'],reg) )
+      plt.savefig( "%s/plotting/plots/%s/ROC_%seta.png"%(os.environ['HGCAL_L1T_BASE'],plotDir,reg) )
+      plt.savefig( "%s/plotting/plots/%s/ROC_%seta.pdf"%(os.environ['HGCAL_L1T_BASE'],plotDir,reg) )
       plt_itr += 1
       print " --> Saved plot: %s/plotting/plots/ROC_%seta.(png/pdf)"%(os.environ['HGCAL_L1T_BASE'],reg)
   leave()
